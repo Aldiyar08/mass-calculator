@@ -262,43 +262,55 @@ with tab_history:
         st.info("Пока нет сохранённых дней. Сохрани первый день в дневнике.")
 
 # ====================== ВКЛАДКА 3: ИИ-ТРЕНЕР ======================
+# ====================== ВКЛАДКА 3: ИИ-ТРЕНЕР (ОБНОВЛЁННАЯ) ======================
 with tab_ai:
     st.subheader("🤖 ИИ-Тренер (Gemini)")
 
-    # Текущие показатели за сегодня
+    # === ОТЛАДКА КЛЮЧА (временно оставь) ===
+    with st.expander("🔧 Debug: информация о ключе"):
+        st.write("Ключ найден в st.secrets:", "GEMINI_API_KEY" in st.secrets)
+        if "GEMINI_API_KEY" in st.secrets:
+            key = st.secrets["GEMINI_API_KEY"].strip()
+            st.write("Длина ключа:", len(key))
+            st.write("Начинается с:", key[:8] + "..." if key else "пусто")
+            st.write("Заканчивается на:", "..." + key[-6:] if key else "пусто")
+        else:
+            st.error("Ключ НЕ найден в Secrets!")
+
+    # Текущие показатели
     now_kcal = sum(item["kcal"] for item in st.session_state.meal_bag)
     now_p = sum(item["p"] for item in st.session_state.meal_bag)
     now_f = sum(item["f"] for item in st.session_state.meal_bag)
     now_c = sum(item["c"] for item in st.session_state.meal_bag)
 
     system_prompt = f"""
-Ты — жёсткий, но честный ИИ-тренер по набору мышечной массы.
-Атлет: {current_user}, {user_gender}, {user_age} лет, рост {user_height} см, вес {user_weight} кг.
-Уровень активности: {activity_level}.
-Суточные цели на массу: {round(target_kcal)} ккал, белки {round(target_p)} г, жиры {round(target_f)} г, углеводы {round(target_c)} г.
-Сегодня съел: {round(now_kcal)} ккал, белки {round(now_p)} г, жиры {round(now_f)} г, углеводы {round(now_c)} г.
-Выпито воды: {st.session_state.water_intake} мл.
+Ты — жёсткий, но честный ИИ-тренер по набору массы.
+Атлет: {current_user}, {user_gender}, {user_age} лет, {user_height} см, {user_weight} кг.
+Цели на день: {round(target_kcal)} ккал | Б: {round(target_p)}г | Ж: {round(target_f)}г | У: {round(target_c)}г
+Сегодня съел: {round(now_kcal)} ккал | Б: {round(now_p)}г | Ж: {round(now_f)}г | У: {round(now_c)}г
+Выпито воды: {st.session_state.water_intake} мл
 
-Отвечай коротко, по делу, используй фитнес-сленг. Мотивируй или ругай, когда нужно. 
-Отвечай строго на русском языке.
+Отвечай коротко, по делу, на русском языке. Используй фитнес-сленг.
 """
 
-    # Вывод истории чата
+    # История чата
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Поле ввода
-    if user_input := st.chat_input("Напиши ИИ-тренеру (например: 'Разбери мой рацион' или 'Что съесть до тренировки?')"):
+    if user_input := st.chat_input("Напиши тренеру..."):
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
 
         with st.chat_message("assistant"):
-            if not GEMINI_API_KEY:
-                reply = "❌ API ключ не настроен в Secrets."
+            if not ("GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip()):
+                reply = "❌ Ключ не найден в Secrets. Добавь его по инструкции выше."
             else:
                 try:
+                    # Конфигурируем ключ заново перед каждым запросом (более надёжно)
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"].strip())
+                    
                     model = genai.GenerativeModel(
                         model_name="gemini-1.5-flash",
                         system_instruction=system_prompt
@@ -306,7 +318,7 @@ with tab_ai:
                     response = model.generate_content(user_input)
                     reply = response.text
                 except Exception as e:
-                    reply = f"❌ Ошибка при обращении к Gemini: {str(e)}"
+                    reply = f"❌ Ошибка Gemini: {str(e)}"
 
             st.markdown(reply)
             st.session_state.chat_history.append({"role": "assistant", "content": reply})
