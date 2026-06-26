@@ -6,17 +6,21 @@ from datetime import date
 import google.generativeai as genai
 from foods import FOOD_DATABASE
 
-# 1. Настройки страницы (должны идти в самом начале)
+# 1. Настройки страницы
 st.set_page_config(page_title="Масса-Комбайн ИИ", page_icon="🤖", layout="wide")
 
-# 2. Инициализация и проверка API-ключа (исправление ошибки 401)
-# Жестко прописываем рабочий ключ прямо в код для проверки
-genai.configure(api_key="AIzaSyAQ.Ab8RN6LNj6iZqqROG6hC_vnKro_Q73NkvvXEvZxPNCo6jSo-7g")
+# 2. ЖЕСТКАЯ СИСЕМНАЯ ИНЪЕКЦИЯ КЛЮЧА (План Перехват)
+if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip() != "":
+    # Насильно пихаем ключ в переменные окружения операционной системы Linux на сервере
+    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"].strip()
+    # И дублируем прямым вызовом конфигурации
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+else:
+    st.error("⚠️ Переменная GEMINI_API_KEY не найдена в Secrets!")
 
-# Имена файлов для локальной базы данных пользователей и истории
+# Имена файлов для базы данных
 USERS_FILE = "users_db.json"
 HISTORY_FILE = "users_history_db.json"
-
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ДАННЫМИ ---
 def load_json(filename):
     if os.path.exists(filename):
