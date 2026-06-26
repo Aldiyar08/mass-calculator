@@ -10,10 +10,8 @@ from foods import FOOD_DATABASE
 st.set_page_config(page_title="Масса-Комбайн ИИ", page_icon="🤖", layout="wide")
 
 # 2. Инициализация и проверка API-ключа (исправление ошибки 401)
-if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip() != "":
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.error("⚠️ Критическая ошибка: Переменная GEMINI_API_KEY не найдена в Secrets твоего Streamlit Cloud или она пустая! Бот не сможет ответить.")
+# Жестко прописываем рабочий ключ прямо в код для проверки
+genai.configure(api_key="AIzaSyAQ.Ab8RN6LNj6iZqqROG6hC_vnKro_Q73NkvvXEvZxPNCo6jSo-7g")
 
 # Имена файлов для локальной базы данных пользователей и истории
 USERS_FILE = "users_db.json"
