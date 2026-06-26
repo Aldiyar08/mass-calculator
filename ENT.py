@@ -3,12 +3,19 @@ import json
 import os
 import hashlib
 from datetime import date
+import google.generativeai as genai
 from foods import FOOD_DATABASE
 
-# Настройки страницы
+# 1. Настройки страницы (должны идти в самом начале)
 st.set_page_config(page_title="Масса-Комбайн ИИ", page_icon="🤖", layout="wide")
 
-# Имена файлов для локальной базы данных на сервере Streamlit
+# 2. Инициализация и проверка API-ключа (исправление ошибки 401)
+if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip() != "":
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("⚠️ Критическая ошибка: Переменная GEMINI_API_KEY не найдена в Secrets твоего Streamlit Cloud или она пустая! Бот не сможет ответить.")
+
+# Имена файлов для локальной базы данных пользователей и истории
 USERS_FILE = "users_db.json"
 HISTORY_FILE = "users_history_db.json"
 
@@ -29,7 +36,7 @@ def save_json(filename, data):
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# Инициализация сессионных переменных
+# Инициализация сессионных переменных Streamlit
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -41,7 +48,7 @@ if "water_intake" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Загружаем актуальные базы пользователей и истории
+# Загружаем базы из файлов
 users_db = load_json(USERS_FILE)
 history_db = load_json(HISTORY_FILE)
 
@@ -75,18 +82,17 @@ if not st.session_state.logged_in:
             else:
                 users_db[reg_user] = {"password": hash_password(reg_pass)}
                 save_json(USERS_FILE, users_db)
-                # Авто-логин сразу после регистрации для бесшовного UX
                 st.session_state.logged_in = True
                 st.session_state.username = reg_user
                 st.success("Аккаунт успешно создан! Добро пожаловать!")
                 st.rerun()
                 
-    st.stop()  # Защита от неавторизованного доступа
+    st.stop()  # Останавливаем выполнение кода для неавторизованных
 
-# --- ГЛАВНЫЙ ЭКРАН (Для тех, кто вошел) ---
+# --- ГЛАВНЫЙ ЭКРАН (Для авторизованных пользователей) ---
 current_user = st.session_state.username
 
-# Кнопка выхода из системы в боковой панели
+# Боковая панель управления профилем
 st.sidebar.write(f"👤 Текущий профиль: **{current_user}**")
 if st.sidebar.button("Выйти из аккаунта 🚪", use_container_width=True):
     st.session_state.logged_in = False
@@ -106,7 +112,7 @@ user_height = st.sidebar.number_input("Рост (см):", min_value=120, max_val
 user_weight = st.sidebar.number_input("Текущий вес (кг):", min_value=35, max_value=180, value=71, step=1)
 
 activity_level = st.sidebar.selectbox("Уровень физических нагрузок:", [
-    "Минимальный (сидячий образ жизни)",
+    "Минимальный (сидячий образ lifestyle)",
     "Легкий (1-3 тренировки в неделю)",
     "Средний (3-5 тренировок в неделю)",
     "Высокий (6-7 тяжелых тренировок в неделю)"
@@ -120,14 +126,14 @@ else:
 
 # Коэффициенты активности
 activity_coefs = {
-    "Минимальный (сидячий образ жизни)": 1.2,
+    "Минимальный (сидячий образ lifestyle)": 1.2,
     "Легкий (1-3 тренировки в неделю)": 1.375,
     "Средний (3-5 тренировок в неделю)": 1.55,
     "Высокий (6-7 тяжелых тренировок в неделю)": 1.725
 }
 maintenance_calories = bmr * activity_coefs[activity_level]
 
-# План на профицит для набора массы
+# План макронутриентов на профицит (+500 ккал) для набора массы
 target_kcal = maintenance_calories + 500
 target_p = user_weight * (2.0 if user_gender == "Мужской" else 1.8)
 target_f = user_weight * 1.0
@@ -147,7 +153,7 @@ st.sidebar.markdown(f"""
 if current_user not in history_db:
     history_db[current_user] = {}
 
-# --- ИНТЕРФЕЙС ВКЛАДОК ---
+# --- ВКАЛДКИ ИНТЕРФЕЙСА ---
 tab_diary, tab_history, tab_ai = st.tabs(["📝 Дневник питания", "📈 Моя История по дням", "🤖 Чат с Настоящим ИИ-Тренером"])
 
 # === ВКЛАДКА 1: ДНЕВНИК ПИТАНИЯ И ВОДЫ ===
@@ -278,7 +284,7 @@ with tab_history:
     if user_history:
         sorted_days = sorted(list(user_history.keys()), reverse=True)
         
-        st.markdown("### 📊 Символьный график калорийности (Последние дни):")
+        st.markdown("### 📊 График калорийности за последние дни:")
         for day in reversed(sorted_days[-7:]):
             day_data = user_history[day]
             bar_length = int((day_data["kcal"] / day_data["target_kcal"]) * 20) if day_data.get("target_kcal", 0) > 0 else 0
@@ -294,7 +300,7 @@ with tab_history:
             h_col2.metric("Белки", f"{day_data['protein']} г", f"Цель: {day_data.get('target_protein', 0)}")
             h_col3.metric("Вода", f"{day_data['water']} мл")
             
-            st.write("Выполнение калорийности в выбранный день:")
+            st.write("Выполнение суточной калорийности:")
             st.progress(min(max(day_data['kcal'] / day_data.get('target_kcal', 1), 0.0), 1.0))
     else:
         st.info("У тебя пока нет сохранённых дней. Сделай записи в дневнике питания и сохрани их!")
@@ -326,23 +332,20 @@ with tab_ai:
     """
 
     try:
-        import google.generativeai as genai
-        if "GEMINI_API_KEY" in st.secrets:
-            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            # Используем стабильный production-идентификатор gemini-1.5-flash-latest
+        # Проверяем, настроен ли genai на самом верху
+        if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip() != "":
+            # Создаем модель, передавая системный промпт
             model = genai.GenerativeModel('gemini-1.5-flash-latest', system_instruction=system_prompt)
             ai_ready = True
-        else:
-            st.warning("⚠️ Переменная GEMINI_API_KEY не найдена в secrets твоего Streamlit Cloud.")
     except Exception as e:
-        st.error(f"Не удалось запустить библиотеку ИИ: {e}")
+        st.error(f"Не удалось запустить модель ИИ: {e}")
 
     # Вывод истории диалога
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if user_input := st.chat_input("Напиши ИИ-тренеру (Например: 'Разбери мой рацион на сегодня', 'Что бахнуть перед тренировкой?')"):
+    if user_input := st.chat_input("Напиши ИИ-тренеру (Например: 'Разбери мой рацион на сегодня', 'Что съесть до тренировки?')"):
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
@@ -352,13 +355,13 @@ with tab_ai:
             
             if ai_ready and model:
                 try:
-                    # Чистый запрос, вся системная мета-информация уже зашита в модель выше
+                    # Чистый вызов генерации (весь системный контекст подтягивается автоматически)
                     response = model.generate_content(user_input)
                     final_reply = response.text
                 except Exception as ex:
                     final_reply = f"🤖 Произошел сбой при генерации ответа: {ex}"
             else:
-                final_reply = "🤖 Ключ API не настроен в Streamlit Secrets. Пожалуйста, пропиши `GEMINI_API_KEY = 'твой_ключ'` в настройках приложения, чтобы чат ожил!"
+                final_reply = "🤖 Ключ API не настроен в Streamlit Secrets или указан неверно. Пожалуйста, проверь вкладку Secrets в настройках сайта."
 
             response_box.markdown(final_reply)
             st.session_state.chat_history.append({"role": "assistant", "content": final_reply})
