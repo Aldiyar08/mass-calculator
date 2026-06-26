@@ -75,9 +75,13 @@ if not st.session_state.logged_in:
             else:
                 users_db[reg_user] = {"password": hash_password(reg_pass)}
                 save_json(USERS_FILE, users_db)
-                st.success("Аккаунт готов! Переходи на вкладку 'Вход в аккаунт'.")
+                # Авто-логин сразу после регистрации для бесшовного UX
+                st.session_state.logged_in = True
+                st.session_state.username = reg_user
+                st.success("Аккаунт успешно создан! Добро пожаловать!")
+                st.rerun()
                 
-    st.stop()  # Дальше этого места неавторизованный пользователь пройти не сможет
+    st.stop()  # Защита от неавторизованного доступа
 
 # --- ГЛАВНЫЙ ЭКРАН (Для тех, кто вошел) ---
 current_user = st.session_state.username
@@ -123,12 +127,12 @@ activity_coefs = {
 }
 maintenance_calories = bmr * activity_coefs[activity_level]
 
-# Научно обоснованный профицит для роста сухих мышц (+500 ккал)
+# План на профицит для набора массы
 target_kcal = maintenance_calories + 500
 target_p = user_weight * (2.0 if user_gender == "Мужской" else 1.8)
 target_f = user_weight * 1.0
 target_c = (target_kcal - (target_p * 4) - (target_f * 9)) / 4
-target_water = round((user_weight * 35) / 1000, 1)  # 35 мл воды на 1 кг веса
+target_water = round((user_weight * 35) / 1000, 1)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"""
@@ -140,7 +144,6 @@ st.sidebar.markdown(f"""
 * 💧 Вода: **{target_water} л**
 """)
 
-# Обеспечиваем структуру данных для истории текущего пользователя
 if current_user not in history_db:
     history_db[current_user] = {}
 
@@ -183,6 +186,7 @@ with tab_diary:
                     "c": nutr["углеводы"] * ratio
                 })
                 st.success(f"✅ Успешно занесено в категорию {meal_type}!")
+                st.rerun()
 
         st.markdown("---")
         st.subheader("💧 Водный Баланс")
@@ -238,7 +242,6 @@ with tab_diary:
             st.write(f"🍞 Углеводы: {round(total_c, 1)} / {round(target_c)} г")
             st.progress(min(max(total_c / target_c, 0.0), 1.0))
             
-            # Генерация текста для экспорта в Telegram
             export_text += f"ИТОГО ЗА СУТКИ:\n🔥 Калории: {round(total_kcal)}/{round(target_kcal)} ккал\n🍗 Белки: {round(total_p)}г\n🥑 Жиры: {round(total_f)}г\n🍞 Углеводы: {round(total_c)}г\n💧 Вода: {st.session_state.water_intake}мл"
             
             st.markdown("---")
@@ -270,7 +273,7 @@ with tab_diary:
 # === ВКЛАДКА 2: ЛИЧНАЯ ИСТОРИЯ И КАЛЕНДАРЬ УСПЕХОВ ===
 with tab_history:
     st.subheader(f"📈 Архив питания пользователя {current_user}")
-    user_history = history_db[current_user]
+    user_history = history_db.get(current_user, {})
     
     if user_history:
         sorted_days = sorted(list(user_history.keys()), reverse=True)
@@ -278,7 +281,7 @@ with tab_history:
         st.markdown("### 📊 Символьный график калорийности (Последние дни):")
         for day in reversed(sorted_days[-7:]):
             day_data = user_history[day]
-            bar_length = int((day_data["kcal"] / day_data["target_kcal"]) * 20) if day_data["target_kcal"] > 0 else 0
+            bar_length = int((day_data["kcal"] / day_data["target_kcal"]) * 20) if day_data.get("target_kcal", 0) > 0 else 0
             bar_str = "🟩" * min(bar_length, 20) + "⬜" * max(20 - bar_length, 0)
             st.text(f"{day} | {bar_str} | {day_data['kcal']} / {day_data['target_kcal']} ккал")
             
@@ -287,12 +290,12 @@ with tab_history:
         if chosen_day:
             day_data = user_history[chosen_day]
             h_col1, h_col2, h_col3 = st.columns(3)
-            h_col1.metric("Калории", f"{day_data['kcal']} ккал", f"Цель: {day_data['target_kcal']}")
-            h_col2.metric("Белки", f"{day_data['protein']} г", f"Цель: {day_data['target_protein']}")
+            h_col1.metric("Калории", f"{day_data['kcal']} ккал", f"Цель: {day_data.get('target_kcal', 0)}")
+            h_col2.metric("Белки", f"{day_data['protein']} г", f"Цель: {day_data.get('target_protein', 0)}")
             h_col3.metric("Вода", f"{day_data['water']} мл")
             
             st.write("Выполнение калорийности в выбранный день:")
-            st.progress(min(max(day_data['kcal'] / day_data['target_kcal'], 0.0), 1.0))
+            st.progress(min(max(day_data['kcal'] / day_data.get('target_kcal', 1), 0.0), 1.0))
     else:
         st.info("У тебя пока нет сохранённых дней. Сделай записи в дневнике питания и сохрани их!")
 
@@ -301,14 +304,33 @@ with tab_ai:
     st.subheader("🤖 Твой Мощный ИИ-Наставник (На базе Google Gemini API)")
     st.write("Я полностью интегрирован в приложение: вижу твой рост, вес, дефицит или профицит и помогу составить идеальную диету.")
 
-    # Пытаемся безопасно подключить нейросеть
     ai_ready = False
+    model = None
+    
+    # Считаем текущий прогресс для передачи динамического контекста в промпт
+    now_kcal = sum(item["kcal"] for item in st.session_state.meal_bag)
+    now_p = sum(item["p"] for item in st.session_state.meal_bag)
+    now_f = sum(item["f"] for item in st.session_state.meal_bag)
+    now_c = sum(item["c"] for item in st.session_state.meal_bag)
+
+    # Системные инструкции для ИИ (задают характер тренера и передают КБЖУ данные)
+    system_prompt = f"""
+    Ты — харизматичный, экспертный, но прямолинейный ИИ-тренер по бодибилдингу и набору мышечной массы.
+    Ты консультируешь атлета по имени {current_user}.
+    Параметры атлета: пол {user_gender}, возраст {user_age} лет, рост {user_height} см, вес {user_weight} кг, уровень активности: {activity_level}.
+    Его расчетные суточные цели для набора массы: калории {round(target_kcal)} ккал, белки {round(target_p)}г, жиры {round(target_f)}г, углеводы {round(target_c)}г.
+    Что он съел по факту сегодня: калории {round(now_kcal)} ккал, белки {round(now_p)}г, жиры {round(now_f)}г, углеводы {round(now_c)}г.
+    Выпито воды сегодня: {st.session_state.water_intake} мл.
+    
+    Твоя задача — давать четкие, научно обоснованные спортивные советы. Если пользователь не добирает белка — ругай его и мотивируй есть качественные продукты (конину, плов, казы, творог). Отвечай коротко, по делу, используй фитнес-сленг. Отвечай строго на том языке, на котором пишет пользователь.
+    """
+
     try:
         import google.generativeai as genai
-        # Читаем секрет напрямую из настроек Streamlit Share
         if "GEMINI_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # Используем стабильный production-идентификатор gemini-1.5-flash-latest
+            model = genai.GenerativeModel('gemini-1.5-flash-latest', system_instruction=system_prompt)
             ai_ready = True
         else:
             st.warning("⚠️ Переменная GEMINI_API_KEY не найдена в secrets твоего Streamlit Cloud.")
@@ -320,36 +342,18 @@ with tab_ai:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if user_input := st.chat_input("Напиши ИИ-тренеру (Например: 'Разбери мой рацион на сегодня', 'Что бахнуть для энергии перед тренировкой?')"):
+    if user_input := st.chat_input("Напиши ИИ-тренеру (Например: 'Разбери мой рацион на сегодня', 'Что бахнуть перед тренировкой?')"):
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
-            
+        
         with st.chat_message("assistant"):
             response_box = st.empty()
             
-            if ai_ready:
-                # Считаем текущий прогресс для передачи контекста в промпт
-                now_kcal = sum(item["kcal"] for item in st.session_state.meal_bag)
-                now_p = sum(item["p"] for item in st.session_state.meal_bag)
-                now_f = sum(item["f"] for item in st.session_state.meal_bag)
-                now_c = sum(item["c"] for item in st.session_state.meal_bag)
-                
-                # Системные инструкции для ИИ
-                system_prompt = f"""
-                Ты — харизматичный, экспертный, но прямолинейный ИИ-тренер по бодибилдингу и набору мышечной массы.
-                Ты консультируешь атлета по имени {current_user}.
-                Параметры атлета: пол {user_gender}, возраст {user_age} лет, рост {user_height} см, вес {user_weight} кг, уровень активности: {activity_level}.
-                Его расчетные суточные цели для набора массы: калории {round(target_kcal)} ккал, белки {round(target_p)}г, жиры {round(target_f)}г, углеводы {round(target_c)}г.
-                Что он съел по факту сегодня: калории {round(now_kcal)} ккал, белки {round(now_p)}г, жиры {round(now_f)}г, углеводы {round(now_c)}г.
-                Выпито воды сегодня: {st.session_state.water_intake} мл.
-                
-                Твоя задача — давать четкие, научно обоснованные спортивные советы. Если пользователь не добирает белка — ругай его и мотивируй есть качественные продукты (конину, плов, казы, творог). Отвечай коротко, по делу, используй фитнес-сленг. Отвечай строго на том языке, на котором пишет пользователь.
-                """
-                
+            if ai_ready and model:
                 try:
-                    full_query = f"{system_prompt}\n\nСообщение от пользователя: {user_input}\nОтвет тренера:"
-                    response = model.generate_content(full_query)
+                    # Чистый запрос, вся системная мета-информация уже зашита в модель выше
+                    response = model.generate_content(user_input)
                     final_reply = response.text
                 except Exception as ex:
                     final_reply = f"🤖 Произошел сбой при генерации ответа: {ex}"
