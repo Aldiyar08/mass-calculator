@@ -268,65 +268,66 @@ with tab_history:
     else:
         st.info("У тебя пока нет сохранённых дней. Сохрани сегодняшний рацион на первой вкладке!")
 
-# === ВКЛАДКА 3: ЧАТ С ИИ-ТРЕНЕРОМ (МЫ ТУТ!) ===
+# === ВКЛАДКА 3: ЧАТ С НАСТОЯЩИМ ИИ-ТРЕНЕРОМ ===
 with tab_ai:
-    st.subheader("🤖 Твой Персональный ИИ-Тренер по Набору Массы")
-    st.write("Привет! Я встроенный ИИ-эксперт. Анализирую твои параметры, рацион и даю чёткие фитнес-советы. Спрашивай меня обо всём!")
+    st.subheader("🤖 Твой Персональный ИИ-Тренер (На базе Google Gemini)")
+    st.write("Теперь это настоящая нейросеть. Я вижу твои параметры, твой рацион и отвечу на любой вопрос!")
 
-    # Краткая симуляция экспертного ИИ ответа на основе контекста
-    # (В реальном проекте сюда подключается API-ключ OpenAI/Google, а пока мы пишем мощный локальный эмулятор-анализатор, который знает о пользователе ВСЁ)
-    
+    # Подключаем библиотеку для работы с ИИ (ее нужно будет добавить в requirements.txt)
+    try:
+        import google.generativeai as genai
+        
+        # Укажи здесь свой API-ключ, полученный в Google AI Studio
+        # Если заливаешь на GitHub, лучше использовать st.secrets["GEMINI_API_KEY"]
+        GEMINI_API_KEY = "AQ.Ab8RN6IBNw0va2wtxDnpjCKVW_RkSwau78SeRfQjGhvPXrUYow" 
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        ai_available = True
+    except Exception as e:
+        st.error(f"Ошибка настройки ИИ: {e}")
+        ai_available = False
+
+    # Отображение истории чата
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if user_input := st.chat_input("Напиши мне (например: 'Оцени мой рацион за сегодня', 'Как мне лучше тренироваться при моём росте?')"):
-        # Добавляем вопрос пользователя в чат
+    if user_input := st.chat_input("Спроси что угодно: про программу тренировок, про калории, креатин или читмил..."):
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
             
-        # Генерируем мега-умный контекстный ответ тренера
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
             
-            # Собираем данные для анализа
-            current_kcal = sum(item["kcal"] for item in st.session_state.meal_bag)
-            current_p = sum(item["p"] for item in st.session_state.meal_bag)
-            
-            # Логика ответов
-            ui_lower = user_input.lower()
-            if "рацион" in ui_lower or "оцени" in ui_lower or "еду" in ui_lower:
-                ai_response = f"""🤖 **Анализирую твою тарелку на сегодня, {current_user}:**
+            if ai_available and GEMINI_API_KEY != "AQ.Ab8RN6IBNw0va2wtxDnpjCKVW_RkSwau78SeRfQjGhvPXrUYow":
+                # Собираем контекст о пользователе, чтобы ИИ знал всё о его прогрессе
+                current_kcal = sum(item["kcal"] for item in st.session_state.meal_bag)
+                current_p = sum(item["p"] for item in st.session_state.meal_bag)
+                current_f = sum(item["f"] for item in st.session_state.meal_bag)
+                current_c = sum(item["c"] for item in st.session_state.meal_bag)
                 
-Ты занёс в дневник **{round(current_kcal)} ккал** и **{round(current_p, 1)}г белка**. 
-Твоя цель для набора массы: **{round(target_kcal)} ккал**. 
-
-"""
-                if current_kcal == 0:
-                    ai_response += "Твой дневник сегодня пуст! Скорее добавь туда что-нибудь сытное (например, плов, казы, бананы или гейнер), чтобы запустить анаболизм."
-                elif current_kcal < maintenance_calories:
-                    ai_response += f"⚠️ Внимание! Ты съел меньше уровня удержания веса ({round(maintenance_calories)} ккал). Твой организм сейчас голодает и жжёт мышцы. Срочно добавь сложный углевод или белок!"
-                elif current_kcal >= maintenance_calories and current_kcal < target_kcal:
-                    ai_response += "Ты зашёл в зону поддержания, но для роста мышц нужно закинуть ещё 300-400 калорий. Добавь орехи или порцию протеина!"
-                else:
-                    ai_response += "🔥 Отличная работа! Ты в идеальном профиците. Мышцы получают максимум энергии для роста. Главное — не забывай про тяжёлые тренировки!"
-                    
-            elif "тренировк" in ui_lower or "спорт" in ui_lower or "мышц" in ui_lower:
-                ai_response = f"""🤖 **Рекомендация по тренировкам под твои параметры:**
+                # Создаем системный промпт (инструкцию для ИИ), заставляя его быть тренером
+                system_context = f"""
+                Ты — жесткий, но мотивирующий ИИ-тренер по набору мышечной массы и фитнесу. 
+                Ты общаешься с пользователем по имени {current_user}.
+                Параметры пользователя: пол {user_gender}, возраст {user_age} лет, рост {user_height} см, вес {user_weight} кг, активность: {activity_level}.
+                Его цель на сегодня: калории {round(target_kcal)}, белки {round(target_p)}г, жиры {round(target_f)}г, углеводы {round(target_c)}г.
+                Что он уже съел сегодня: калории {round(current_kcal)} ккал, белки {round(current_p)}г, жиры {round(current_f)}г, углеводы {round(current_c)}г.
+                Выпито воды: {st.session_state.water_intake} мл.
                 
-Учитывая твой рост (**{user_height} см**) и текущий вес (**{user_weight} кг**), тебе отлично подойдёт силовой сплит с упором на базовые многосуставные движения (Приседания, Становая тяга, Жим штанги лежа).
-* Так как у тебя цель — набор массы, держи диапазон повторений в районе **8-12 раз** до близкого отказа.
-* Отдыхай между подходами по 2-3 минуты, чтобы нервная система успевала восстановиться.
-* Твой уровень активности заявлен как *"{activity_level}"*, поэтому убедись, что ты тренируешься тяжело, но не перегораешь!
-"""
+                Отвечай кратко, емко, по делу, используй фитнес-сленг, давай четкие научные расклады. Если он не добирает белка или калорий — мотивируй его поесть (особенно конину, плов, казы, творог). Отвечай на том же языке, на котором обратился пользователь.
+                """
+                
+                try:
+                    # Отправляем запрос в настоящую нейросеть вместе с контекстом
+                    full_prompt = f"{system_context}\n\nВопрос пользователя: {user_input}\nОтвет тренера:"
+                    response = model.generate_content(full_prompt)
+                    ai_response = response.text
+                except Exception as ex:
+                    ai_response = f"🤖 Ой, не удалось связаться с мозгом ИИ. Ошибка: {ex}"
             else:
-                ai_response = f"""🤖 Привет, {current_user}! Как твой личный ИИ-наставник, я изучил твой профиль:
-* **Пол:** {user_gender} | **Возраст:** {user_age} лет
-* **Рост/Вес:** {user_height}см / {user_weight}кг
-* **Текущий рацион:** {round(current_kcal)} / {round(target_kcal)} ккал.
+                ai_response = "🤖 Ключ API не настроен. Настоящий ИИ отключен, работает старый глупый бот."
 
-Твой вопрос: *"{user_input}"* — отличная тема! Для качественного набора веса старайся делать упор на плотную, богатую нутриентами пищу (крупы, мясо, яйца). Если хочешь, чтобы я оценил твоё питание, просто напиши слово **"рацион"**!
-"""
             response_placeholder.markdown(ai_response)
             st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
