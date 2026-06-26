@@ -309,6 +309,10 @@ with tab_history:
 
 # === ВКЛАДКА 3: НАСТОЯЩИЙ ИИ-ТРЕНЕР GOOGLE GEMINI ===
 with tab_ai:
+    st.write("DEBUG: Ключ настроен?", "GEMINI_API_KEY" in st.secrets)
+if "GEMINI_API_KEY" in st.secrets:
+    key_preview = st.secrets["GEMINI_API_KEY"][:10] + "..." 
+    st.write("DEBUG: Превью ключа:", key_preview)
     st.subheader("🤖 Твой Мощный ИИ-Наставник (На базе Google Gemini API)")
     st.write("Я полностью интегрирован в приложение: вижу твой рост, вес, дефицит или профицит и помогу составить идеальную диету.")
 
