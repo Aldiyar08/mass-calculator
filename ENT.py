@@ -1,5 +1,4 @@
 import streamlit as st
-import difflib
 from foods import FOOD_DATABASE
 
 # Настройки страницы
@@ -10,7 +9,7 @@ if "meal_bag" not in st.session_state:
     st.session_state.meal_bag = []
 
 st.title("🏋️‍♂️ Калькулятор Набора Массы & Гастро-СНГ Кухня")
-st.write("Считай КБЖУ национальных блюд СНГ и спортивных продуктов с умным трекером калорий.")
+st.write("Ищи продукты с автоподбором «как в Google» и собирай свой рацион.")
 
 # --- БОКОВАЯ ПАНЕЛЬ: Расчет профицита ---
 st.sidebar.header("🎯 Твоя цель на массу")
@@ -45,57 +44,44 @@ st.sidebar.markdown(f"""
 col_left, col_right = st.columns([1, 1])
 
 with col_left:
-    st.subheader("🔍 Поиск продуктов")
+    st.subheader("🔍 Быстрый поиск продуктов")
     
-    # Поле ввода, куда человек пишет буквы
-    search_input = st.text_input("Начните вводить название (например: беш, кони, рис, курин):").lower().strip()
+    # Создаем список всех продуктов для выпадающего списка
+    options = list(FOOD_DATABASE.keys())
+    
+    # st.selectbox с индексом None изначально пустой.
+    # Человек кликает, начинает вводить буквы, и список мгновенно фильтруется под строкой ввода, как в Гугле.
+    selected_product = st.selectbox(
+        "Начните вводить название блюда или ингредиента:",
+        options=options,
+        index=None,
+        placeholder="Введите продукт (например: бешбармак, конина, рис...)",
+    )
 
-    # Логика живых подсказок
-    if search_input:
-        # 1. Сначала ищем продукты, которые содержат введенный текст
-        filtered_foods = [food for food in FOOD_DATABASE.keys() if search_input in food.lower()]
+    # Если продукт выбран из выпадающих подсказок
+    if selected_product:
+        unit = FOOD_DATABASE[selected_product]["unit"]
         
-        # 2. Если точных совпадений мало или нет, добавляем нечеткий поиск на случай опечаток
-        if len(filtered_foods) < 3:
-            fuzzy_matches = difflib.get_close_matches(search_input, FOOD_DATABASE.keys(), n=3, cutoff=0.4)
-            for match in fuzzy_matches:
-                if match not in filtered_foods:
-                    filtered_foods.append(match)
+        # Выводим КБЖУ выбранного продукта на 100г для наглядности перед добавлением
+        nutr = FOOD_DATABASE[selected_product]
+        st.caption(f"📊 На 100г/мл: {nutr['калории']} ккал | Б: {nutr['белки']}г | Жиры: {nutr['жиры']}г | У: {nutr['углеводы']}г")
+        
+        amount = st.number_input(f"Количество ({unit}):", min_value=1, max_value=2000, value=150, step=10)
+        
+        if st.button("Добавить в тарелку ➕", use_container_width=True):
+            ratio = amount / 100.0
+            st.session_state.meal_bag.append({
+                "name": selected_product,
+                "amount": amount,
+                "unit": unit,
+                "kcal": nutr["калории"] * ratio,
+                "p": nutr["белки"] * ratio,
+                "f": nutr["жиры"] * ratio,
+                "c": nutr["углеводы"] * ratio
+            })
+            st.success(f"✅ Добавлено: {selected_product}")
     else:
-        # Если человек еще ничего не ввел, подсказки не навязчивые (показываем пустой список или топ-3)
-        filtered_foods = []
-
-    # --- Вывод подсказок ---
-    if search_input:
-        if filtered_foods:
-            # Превращаем выпадающий список в панель подсказок
-            selected_product = st.selectbox(
-                f"💡 Найдено совпадений ({len(filtered_foods)}). Выберите нужное:", 
-                filtered_foods,
-                help="Кликните, чтобы выбрать подходящий вариант из базы данных"
-            )
-            
-            unit = FOOD_DATABASE[selected_product]["unit"]
-            amount = st.number_input(f"Количество ({unit}):", min_value=1, max_value=2000, value=150, step=10)
-            
-            if st.button("Добавить в тарелку ➕", use_container_width=True):
-                nutrients = FOOD_DATABASE[selected_product]
-                ratio = amount / 100.0
-                
-                st.session_state.meal_bag.append({
-                    "name": selected_product,
-                    "amount": amount,
-                    "unit": unit,
-                    "kcal": nutrients["калории"] * ratio,
-                    "p": nutrients["белки"] * ratio,
-                    "f": nutrients["жиры"] * ratio,
-                    "c": nutrients["углеводы"] * ratio
-                })
-                st.success(f"✅ Добавлено: {selected_product}")
-        else:
-            st.error("⚠️ Ничего не найдено. Попробуйте ввести другое ключевое слово.")
-    else:
-        st.info("💡 Начните вводить буквы в поле выше, и здесь мгновенно появятся подсказки для быстрого выбора!")
+        st.info("💡 Кликни по полю выше и начни вводить буквы. Подходящие блюда отфильтруются автоматически!")
 
 with col_right:
     st.subheader("📥 Содержимое твоей тарелки")
