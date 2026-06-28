@@ -43,9 +43,9 @@ init_db()
 # --- ДЕКОДИРОВАНИЕ API КЛЮЧА ИИ ---
 def get_decrypted_key():
     # Замени значение внутри кавычек на свою строку из base64encode.org!
-    ENCRYPTED_KEY = "QUl6YVN5QVEuQWI4Uk42TEtCY2RCQTBJUXNLRmVLc0xTLTdBT09ITm5vMWpVWU1qS3ZQc1R0SURabUE=" 
+    ENCRYPTED_KEY = "QUl6YVN5QVEuQWI4Uk42TEtCY2RCQTBJUXNLRmVLc0xTLTdBT09ITm5vMWpVWU1qS3ZQc1R0SURabUE" 
     
-    if ENCRYPTED_KEY == "QUl6YVN5QVEuQWI4Uk42TEtCY2RCQTBJUXNLRmVLc0xTLTdBT09ITm5vMWpVWU1qS3ZQc1R0SURabUE=":
+    if ENCRYPTED_KEY == "QUl6YVN5QVEuQWI4Uk42TEtCY2RCQTBJUXNLRmVLc0xTLTdBT09ITm5vMWpVWU1qS3ZQc1R0SURabUE":
         return None
     try:
         decoded_bytes = base64.b64decode(ENCRYPTED_KEY)
